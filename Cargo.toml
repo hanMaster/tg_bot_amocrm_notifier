@@ -1,0 +1,16 @@
+[package]
+name = "tg-bot"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+teloxide = { version = "0.13.0", features = ["macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+log = "0.4.26"
+pretty_env_logger = "0.5.0"
+dotenvy = "0.15.7"
+sqlx = { version = "0.8.3", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+cron = "0.15.0"
+#chrono = "0.4"
