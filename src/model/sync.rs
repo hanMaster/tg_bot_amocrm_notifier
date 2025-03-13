@@ -143,14 +143,14 @@ async fn get_profit_data(ids: Vec<u64>) -> Result<Vec<DealForAdd>> {
 
     for id in ids {
         let url = format!("{}/property/deal/{}?access_token={}", base_url, id, token);
-        info!("fetching {}", url);
+        debug!("fetching {}", url);
         let response = Client::new()
             .get(url)
             .header("Content-Type", "application/json")
             .send()
             .await?;
         if response.status() == reqwest::StatusCode::OK {
-            info!("JSON parse");
+            debug!("JSON parse");
 
             let data = response.json::<ProfitRecord>().await;
             // let date_utc = DateTime::from_timestamp(l.created_at, 0).unwrap();
@@ -158,7 +158,7 @@ async fn get_profit_data(ids: Vec<u64>) -> Result<Vec<DealForAdd>> {
 
             match data {
                 Ok(d) => {
-                    info!("received: {:?}", d);
+                    debug!("received: {:?}", d);
                     if d.status == "success" {
                         let p = d.data.iter().next().unwrap();
                         let object_type = if p.house_name.contains("Кладовк") {
