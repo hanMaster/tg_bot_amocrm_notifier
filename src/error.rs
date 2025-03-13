@@ -1,5 +1,6 @@
 use std::env;
 use std::fmt::{Display, Formatter};
+use std::num::ParseIntError;
 use teloxide::RequestError;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -10,6 +11,8 @@ pub enum Error {
     Sqlx(sqlx::Error),
     Request(RequestError),
     RequestFailed(reqwest::Error),
+    ProfitAuthFailed,
+    Parse(ParseIntError),
 }
 
 // region:    ---From
@@ -20,6 +23,11 @@ impl From<reqwest::Error> for Error {
     }
 }
 
+impl From<ParseIntError> for Error {
+    fn from(value: ParseIntError) -> Self {
+        Error::Parse(value)
+    }
+}
 
 impl From<sqlx::Error> for Error {
     fn from(value: sqlx::Error) -> Self {

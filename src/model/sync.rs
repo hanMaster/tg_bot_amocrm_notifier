@@ -1,11 +1,13 @@
-use crate::model::data::StringOrInt::Str;
-use crate::model::data::{CustomField, Record, Value};
+use crate::error::Error;
+use crate::model::data::FlexibleType::Str;
+use crate::model::data::{CustomField, ProfitRecord, Record, Val};
 use crate::model::deal::DealForAdd;
 use crate::model::Db;
 use crate::Result;
-use log::debug;
+use log::{debug, error, info};
 use reqwest::Client;
-use sqlx::types::chrono::{DateTime, Local};
+use serde::Deserialize;
+use serde_json::json;
 use sqlx::FromRow;
 use std::env;
 use std::fmt::Write;
@@ -64,7 +66,7 @@ async fn fetch() -> Result<(bool, String)> {
     let mut next = data._links.next.take();
     debug!("next: {:?}", next);
 
-    let mut leads = extract_data(data);
+    let mut leads = extract_deal_ids(data);
 
     while next.is_some() {
         let client = Client::new()
@@ -77,22 +79,28 @@ async fn fetch() -> Result<(bool, String)> {
 
         next = data._links.next.take();
         debug!("next in while: {:?}", next);
-        let leads_in_while = extract_data(data);
+        let leads_in_while = extract_deal_ids(data);
 
         leads.extend(leads_in_while);
     }
 
-    let response = if !leads.is_empty() {
-        db.update_log(leads.len()).await?;
-        let leads_cloned = leads.clone();
-        for lead in leads {
+    let full_data = get_profit_data(leads).await?;
+
+    let response = if !full_data.is_empty() {
+        db.update_log(full_data.len()).await?;
+        let leads_cloned = full_data.clone();
+        for lead in full_data {
             let saved = db.read_deal(&lead.deal_id).await.is_some();
             if !saved {
                 db.create_deal(lead).await?;
             }
         }
         let res = leads_cloned.iter().fold(String::new(), |mut output, b| {
-            let _ = writeln!(output, "Дом: {} {} {}", b.house, b.object_type, b.object);
+            let _ = writeln!(
+                output,
+                "Дом № {} - {} №{}",
+                b.house, b.object_type, b.object
+            );
             output
         });
         (true, res)
@@ -104,7 +112,7 @@ async fn fetch() -> Result<(bool, String)> {
     Ok(response)
 }
 
-fn extract_data(record: Record) -> Vec<DealForAdd> {
+fn extract_deal_ids(record: Record) -> Vec<u64> {
     let leads = record
         ._embedded
         .leads
@@ -113,28 +121,98 @@ fn extract_data(record: Record) -> Vec<DealForAdd> {
             l.custom_fields_values.contains(&CustomField {
                 field_id: 1631153,
                 field_name: "Тип договора".to_string(),
-                values: vec![Value {
+                values: vec![Val {
                     value: Str("ДКП".to_string()),
                     enum_id: Some(4661181),
                 }],
             })
         })
-        .map(|l| {
-            let id = l.id;
-            let object = l.name.clone();
-            let date_utc = DateTime::from_timestamp(l.created_at, 0).unwrap();
-            let created_on = DateTime::<Local>::from(date_utc).naive_local();
-
-            DealForAdd {
-                deal_id: id.to_string(),
-                house: "дом".to_string(),
-                object_type: "кладовка".to_string(),
-                object,
-                created_on,
-            }
-        })
+        .map(|l| l.id)
         .collect::<Vec<_>>();
 
-    debug!("extractor leads {:?}", leads);
+    info!("extractor leads {:?}", leads);
     leads
+}
+
+async fn get_profit_data(ids: Vec<u64>) -> Result<Vec<DealForAdd>> {
+    let base_url = env::var("PROFIT_URL").expect("PROFIT_URL must be set");
+
+    let token = get_profit_token(&base_url).await?;
+
+    let mut res: Vec<DealForAdd> = Vec::with_capacity(ids.len());
+
+    for id in ids {
+        let url = format!("{}/property/deal/{}?access_token={}", base_url, id, token);
+        info!("fetching {}", url);
+        let response = Client::new()
+            .get(url)
+            .header("Content-Type", "application/json")
+            .send()
+            .await?;
+        if response.status() == reqwest::StatusCode::OK {
+            info!("JSON parse");
+
+            let data = response.json::<ProfitRecord>().await;
+            // let date_utc = DateTime::from_timestamp(l.created_at, 0).unwrap();
+            // let created_on = DateTime::<Local>::from(date_utc).naive_local();
+
+            match data {
+                Ok(d) => {
+                    info!("received: {:?}", d);
+                    if d.status == "success" {
+                        let p = d.data.iter().next().unwrap();
+                        let object_type = if p.house_name.contains("Кладовк") {
+                            "кладовка".to_string()
+                        } else {
+                            "Квартира".to_string()
+                        };
+
+                        let house = p.house_name.split('№').collect::<Vec<_>>()[1];
+                        let house = house.parse::<i32>()?;
+
+                        let rec = DealForAdd {
+                            deal_id: id.to_string(),
+                            house,
+                            object_type,
+                            object: p.number.parse::<i32>()?,
+                        };
+                        res.push(rec);
+                    }
+                }
+                Err(e) => {
+                    error!("PARSE ERROR: {:?}", e);
+                }
+            }
+        }
+    }
+
+    Ok(res)
+}
+
+#[derive(Deserialize)]
+struct AuthResponse {
+    pub access_token: String,
+}
+async fn get_profit_token(url: &str) -> Result<String> {
+    let key = env::var("PROFIT_API_KEY").expect("PROFIT_API_KEY must be set");
+
+    let payload = json!({
+      "type": "api-app",
+      "credentials": {
+        "pb_api_key": key
+      }
+    });
+    let client = Client::new()
+        .post(format!("{url}/authentication"))
+        .json(&payload);
+
+    let result = client.send().await?;
+
+    if result.status() == reqwest::StatusCode::OK {
+        let token = result.json::<AuthResponse>().await?.access_token;
+        debug!("Profitbase Token: {:?}", token);
+        return Ok(token);
+    }
+
+    Err(Error::ProfitAuthFailed)
 }

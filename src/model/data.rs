@@ -3,7 +3,7 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug, Clone)]
 pub struct Record {
     pub _links: Links,
-    pub _embedded: Embedded
+    pub _embedded: Embedded,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -13,12 +13,12 @@ pub struct Links {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Link {
-    pub href: String
+    pub href: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Embedded {
-    pub leads: Vec<Lead>
+    pub leads: Vec<Lead>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -32,18 +32,34 @@ pub struct Lead {
 pub struct CustomField {
     pub field_id: u64,
     pub field_name: String,
-    pub values: Vec<Value>,
+    pub values: Vec<Val>,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
-pub struct Value {
-    pub value: StringOrInt,
+pub struct Val {
+    pub value: FlexibleType,
     pub enum_id: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
-pub enum StringOrInt {
+pub enum FlexibleType {
     Str(String),
-    Int(u64)
+    Int(i64),
+}
+
+// Profitbase
+#[derive(Deserialize, Debug, Clone)]
+pub struct ProfitRecord {
+    pub status: String,
+    pub data: Vec<ProfitData>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct ProfitData {
+    pub number: String,
+    #[serde(rename = "houseName")]
+    pub house_name: String,
+    #[serde(rename = "projectName")]
+    pub project_name: String,
 }

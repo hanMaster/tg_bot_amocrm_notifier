@@ -26,9 +26,9 @@ async fn create_schema(db_url: &str) -> Result<()> {
     (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         deal_id         TEXT                NOT NULL,
-        house           TEXT                NOT NULL,
+        house           INTEGER             NOT NULL,
         object_type     TEXT                NOT NULL,
-        object          TEXT                NOT NULL,
+        object          INTEGER             NOT NULL,
         created_on      DATETIME DEFAULT    (datetime('now', 'localtime')),
         updated_on      DATETIME DEFAULT    (datetime('now', 'localtime'))
     );
