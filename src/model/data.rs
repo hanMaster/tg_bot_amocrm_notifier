@@ -24,8 +24,8 @@ pub struct Embedded {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Lead {
     pub id: u64,
-    pub name: String,
-    pub created_at: i64,
+    pub _name: String,
+    pub _created_at: i64,
     pub custom_fields_values: Vec<CustomField>,
 }
 #[derive(Deserialize, Debug, Clone, PartialEq)]

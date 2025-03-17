@@ -3,10 +3,12 @@ use crate::model::deal::{apartments, storage_rooms};
 use crate::model::sync::sync;
 use dotenvy::dotenv;
 use teloxide::{prelude::*, utils::command::BotCommands};
+use crate::config::config;
 
 mod error;
 mod model;
 mod worker;
+mod config;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -54,8 +56,15 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
             bot.send_message(msg.chat.id, data).await?
         }
         Command::Sync => {
-            let data = sync().await;
-            bot.send_message(msg.chat.id, data.1).await?
+            let data_result = sync().await;
+            match data_result {
+                Ok(data) => bot.send_message(msg.chat.id, data.1).await?,
+                Err(e) => {
+                    let admin_id = config().ADMIN_ID;
+                    bot.send_message(ChatId(admin_id), e.to_string()).await?;
+                    bot.send_message(msg.chat.id, e.to_string()).await?
+                }
+            }
         }
     };
 

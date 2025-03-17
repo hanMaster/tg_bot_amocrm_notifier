@@ -1,3 +1,4 @@
+use crate::config::config;
 use crate::error::Error;
 use crate::model::data::FlexibleType::Str;
 use crate::model::data::{CustomField, ProfitRecord, Record, Val};
@@ -9,7 +10,6 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::FromRow;
-use std::env;
 use std::fmt::Write;
 
 #[allow(dead_code)]
@@ -36,23 +36,18 @@ impl Db {
     }
 }
 
-pub async fn sync() -> (bool, String) {
-    fetch()
-        .await
-        .unwrap_or((false, "Failed to fetch AmoCRM".to_string()))
-}
-
-async fn fetch() -> Result<(bool, String)> {
+pub async fn sync() -> Result<(bool, String)> {
     let db = Db::new().await;
-    let url = env::var("AMO_URL").expect("AMO_URL must be set");
-    let token = env::var("AMO_TOKEN").expect("AMO_TOKEN must be set");
     let from_date = db.get_last_sync_date().await?;
 
     debug!("From Date: {:?}", from_date);
 
     let client = Client::new()
-        .get(format!("{url}&filter[created_at][from]={from_date}"))
-        .header("Authorization", format!("Bearer {}", token));
+        .get(format!(
+            "{}&filter[created_at][from]={from_date}",
+            config().AMO_URL
+        ))
+        .header("Authorization", format!("Bearer {}", config().AMO_TOKEN));
 
     let result = client.send().await?;
 
@@ -71,10 +66,11 @@ async fn fetch() -> Result<(bool, String)> {
     while next.is_some() {
         let client = Client::new()
             .get(format!(
-                "{url}&filter[created_at][from]={}",
+                "{}&filter[created_at][from]={}",
+                config().AMO_URL,
                 next.as_ref().unwrap().href
             ))
-            .header("Authorization", format!("Bearer {}", token));
+            .header("Authorization", format!("Bearer {}", config().AMO_TOKEN));
         let mut data = client.send().await?.json::<Record>().await?;
 
         next = data._links.next.take();
@@ -135,14 +131,17 @@ fn extract_deal_ids(record: Record) -> Vec<u64> {
 }
 
 async fn get_profit_data(ids: Vec<u64>) -> Result<Vec<DealForAdd>> {
-    let base_url = env::var("PROFIT_URL").expect("PROFIT_URL must be set");
-
-    let token = get_profit_token(&base_url).await?;
+    let token = get_profit_token(&config().PROFIT_URL).await?;
 
     let mut res: Vec<DealForAdd> = Vec::with_capacity(ids.len());
 
     for id in ids {
-        let url = format!("{}/property/deal/{}?access_token={}", base_url, id, token);
+        let url = format!(
+            "{}/property/deal/{}?access_token={}",
+            config().PROFIT_URL,
+            id,
+            token
+        );
         debug!("fetching {}", url);
         let response = Client::new()
             .get(url)
@@ -160,7 +159,7 @@ async fn get_profit_data(ids: Vec<u64>) -> Result<Vec<DealForAdd>> {
                 Ok(d) => {
                     debug!("received: {:?}", d);
                     if d.status == "success" {
-                        let p = d.data.iter().next().unwrap();
+                        let p = d.data.first().unwrap();
                         let object_type = if p.house_name.contains("Кладовк") {
                             "кладовка".to_string()
                         } else {
@@ -194,12 +193,10 @@ struct AuthResponse {
     pub access_token: String,
 }
 async fn get_profit_token(url: &str) -> Result<String> {
-    let key = env::var("PROFIT_API_KEY").expect("PROFIT_API_KEY must be set");
-
     let payload = json!({
       "type": "api-app",
       "credentials": {
-        "pb_api_key": key
+        "pb_api_key": config().PROFIT_API_KEY,
       }
     });
     let client = Client::new()

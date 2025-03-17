@@ -7,6 +7,10 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
+    // -- Config
+    ConfigMissingEnv(&'static str),
+    ConfigWrongFormat(&'static str),
+
     Env(env::VarError),
     Sqlx(sqlx::Error),
     Request(RequestError),

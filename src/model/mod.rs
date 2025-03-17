@@ -1,8 +1,8 @@
-use std::env;
-use sqlx::migrate::MigrateDatabase;
-use sqlx::{Sqlite, SqlitePool};
-use sqlx::sqlite::SqlitePoolOptions;
+use crate::config::config;
 use crate::Result;
+use sqlx::migrate::MigrateDatabase;
+use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::{Sqlite, SqlitePool};
 
 pub mod deal;
 pub mod sync;
@@ -47,20 +47,21 @@ async fn create_schema(db_url: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn init_db()->Result<Db> {
-    let db_url = env::var("DB_URL")?;
-    if !Sqlite::database_exists(&db_url).await.unwrap_or(false) {
-        Sqlite::create_database(&db_url).await?;
-        match create_schema(&db_url).await {
+pub async fn init_db() -> Result<Db> {
+    if !Sqlite::database_exists(&config().DB_URL)
+        .await
+        .unwrap_or(false)
+    {
+        Sqlite::create_database(&config().DB_URL).await?;
+        match create_schema(&config().DB_URL).await {
             Ok(_) => log::info!("database created successfully"),
             Err(e) => panic!("{}", e),
         }
     }
     let db = SqlitePoolOptions::new()
         .max_connections(5)
-        .connect(&db_url).await?;
-    // let qry = "INSERT INTO log (last_checked_date) VALUES($1)";
-    // let result = sqlx::query(&qry).bind("testing").execute(&db).await?;
+        .connect(&config().DB_URL)
+        .await?;
 
     Ok(Db { db })
 }
