@@ -11,7 +11,6 @@ pub enum Error {
     ConfigMissingEnv(&'static str),
     ConfigWrongFormat(&'static str),
 
-    Env(env::VarError),
     Sqlx(sqlx::Error),
     Request(RequestError),
     RequestFailed(reqwest::Error),
