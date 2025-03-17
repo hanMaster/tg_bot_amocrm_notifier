@@ -1,9 +1,8 @@
-use std::env;
 use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
 use teloxide::RequestError;
 
-pub type Result<T> = ::std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
@@ -35,12 +34,6 @@ impl From<ParseIntError> for Error {
 impl From<sqlx::Error> for Error {
     fn from(value: sqlx::Error) -> Self {
         Error::Sqlx(value)
-    }
-}
-
-impl From<env::VarError> for Error {
-    fn from(value: env::VarError) -> Self {
-        Error::Env(value)
     }
 }
 
