@@ -37,9 +37,9 @@ async fn main() -> Result<()> {
     description = "Здесь можно увидеть номера квартир и кладовок, проданных по ДКП:"
 )]
 enum Command {
-    #[command(description = "Вывод спсика квартир")]
+    #[command(description = "Квартиры")]
     Apartments,
-    #[command(description = "Вывод списка кладовок")]
+    #[command(description = "Кладовки")]
     StorageRooms,
     #[command(description = "Запросить данные из AmoCRM")]
     Sync,

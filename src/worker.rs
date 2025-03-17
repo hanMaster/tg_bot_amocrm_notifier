@@ -22,7 +22,7 @@ pub fn do_work(bot: Bot) {
             if let Some(next) = schedule.upcoming(Local).next() {
                 let duration = (next - now).to_std().expect("duration cannot be negative");
                 sleep(duration).await;
-                let info = format!("Задача выполняется в: {}", Local::now());
+                let info = format!("{}: запущена синхронизация", Local::now().format("%d.%m.%Y %H:%M:%S"));
                 debug!("{}", info);
                 bot.send_message(ChatId(config().ADMIN_ID), info)
                     .await

@@ -98,7 +98,7 @@ async fn prepare_response(object_type: &str) -> String {
         if res.is_empty() {
             "Нет данных".to_string()
         } else {
-            res
+            format!("{res}\nВсего записей: {}", rows.len())
         }
     } else {
         "Ошибка чтения данных".to_string()
