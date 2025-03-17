@@ -26,20 +26,20 @@ pub fn do_work(bot: Bot) {
                 debug!("{}", info);
                 bot.send_message(ChatId(config().ADMIN_ID), info)
                     .await
-                    .expect("TODO: panic message");
+                    .expect("Unable to send message to admin");
                 let sync_result = sync().await;
                 match sync_result {
                     Ok((have_data, data)) => {
                         if have_data {
                             bot.send_message(ChatId(config().TG_GROUP_ID), data)
                                 .await
-                                .expect("TODO: panic message");
+                                .expect("Unable to send message in group");
                         }
                     }
                     Err(e) => {
                         bot.send_message(ChatId(config().ADMIN_ID), e.to_string())
                             .await
-                            .expect("TODO: panic message");
+                            .expect("Unable to send message to admin");
                     }
                 }
             }
