@@ -11,8 +11,6 @@ use serde::Deserialize;
 use serde_json::json;
 use sqlx::types::chrono::DateTime;
 use std::fmt::Write;
-use std::ops::Add;
-use std::time::Duration;
 
 pub async fn sync() -> Result<(bool, String)> {
     let db = Db::new().await;
@@ -57,11 +55,12 @@ pub async fn sync() -> Result<(bool, String)> {
     let response = if !leads.is_empty() {
         let mut new_data: Vec<DealForAdd> = vec![];
         let saved_ids = db.read_deals().await?;
+        let token = get_profit_token(&config().PROFIT_URL).await?;
         for lead in leads {
             if saved_ids.contains(&lead) {
                 continue;
             }
-            let full_data = get_profit_data(lead).await?;
+            let full_data = get_profit_data(lead, &token).await?;
             db.create_deal(&full_data).await?;
             new_data.push(full_data);
         }
@@ -69,20 +68,17 @@ pub async fn sync() -> Result<(bool, String)> {
         if new_data.is_empty() {
             (false, "Новых сделок не найдено".to_string())
         } else {
-            let res = new_data.iter().fold(String::new(), |mut output, b| {
-                let _ = writeln!(
-                    output,
-                    "Проект: Сити\nДом № {}\nТип объекта: {} № {:0>3}\nРегистрация: {}\nПередача: {}\n",
-                    b.house,
-                    b.object_type,
-                    b.object,
-                    b.created_on.format("%d.%m.%Y"),
-                    b.created_on
-                        .add(Duration::from_secs(2592000))
-                        .format("%d.%m.%Y")
-                );
-                output
-            });
+            let res =
+                new_data
+                    .iter()
+                    .fold("Проект: Сити\n".to_string(), |mut output, b| {
+                        let _ = writeln!(
+                            output,
+                            "Дом № {} {} № {}, ",
+                            b.house, b.object_type, b.object
+                        );
+                        output
+                    });
             (true, res)
         }
     } else {
@@ -115,9 +111,7 @@ fn extract_deal_ids(record: Record) -> Vec<u64> {
     leads
 }
 
-async fn get_profit_data(deal_id: u64) -> Result<DealForAdd> {
-    let token = get_profit_token(&config().PROFIT_URL).await?;
-
+async fn get_profit_data(deal_id: u64, token: &str) -> Result<DealForAdd> {
     let url = format!(
         "{}/property/deal/{}?access_token={}",
         config().PROFIT_URL,
@@ -160,12 +154,14 @@ async fn get_profit_data(deal_id: u64) -> Result<DealForAdd> {
             )
             .unwrap_or(Default::default())
             .naive_local();
+            let attrs = p.attributes.clone();
 
             Ok(DealForAdd {
                 deal_id,
                 house,
                 object_type,
                 object: p.number.parse::<i32>()?,
+                facing: attrs.facing.unwrap_or("".to_string()),
                 created_on,
             })
         } else {

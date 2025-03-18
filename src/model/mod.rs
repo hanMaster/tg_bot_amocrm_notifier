@@ -29,6 +29,7 @@ async fn create_schema(db_url: &str) -> Result<()> {
         house           INTEGER             NOT NULL,
         object_type     TEXT                NOT NULL,
         object          INTEGER             NOT NULL,
+        facing          TEXT,
         created_on      DATETIME DEFAULT    (datetime('now', 'localtime')),
         updated_on      DATETIME DEFAULT    (datetime('now', 'localtime'))
     );

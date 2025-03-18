@@ -15,6 +15,7 @@ pub struct HouseData {
     pub house: i32,
     pub object_type: String,
     pub object: i32,
+    pub facing: String,
     pub created_on: NaiveDateTime,
     pub updated_on: String,
 }
@@ -25,6 +26,7 @@ pub struct DealForAdd {
     pub house: i32,
     pub object_type: String,
     pub object: i32,
+    pub facing: String,
     pub created_on: NaiveDateTime,
 }
 
@@ -41,11 +43,12 @@ impl Db {
     pub async fn create_deal(&self, d: &DealForAdd) -> Result<()> {
         debug!("create deal with data: {:?}", &d);
         let (id, ): (i64,) =
-            sqlx::query_as("INSERT INTO deal (deal_id, house, object_type, object, created_on) VALUES($1, $2, $3, $4, $5) returning id")
+            sqlx::query_as("INSERT INTO deal (deal_id, house, object_type, object, facing, created_on) VALUES($1, $2, $3, $4, $5, $6) returning id")
                 .bind(d.deal_id as i32)
                 .bind(d.house)
                 .bind(&d.object_type)
                 .bind(d.object)
+                .bind(&d.facing)
                 .bind(d.created_on)
                 .fetch_one(&self.db)
                 .await?;
@@ -77,24 +80,32 @@ async fn prepare_response(object_type: &str) -> String {
 
     match result {
         Ok(rows) => {
-            let res = rows.iter().fold(String::new(), |mut output, b| {
-                let _ = writeln!(
-                    output,
-                    "Проект: Сити\nДом № {}\nТип объекта: {} № {:0>3}\nРегистрация: {}\nПередача: {}\n",
-                    b.house,
-                    b.object_type,
-                    b.object,
-                    b.created_on.format("%d.%m.%Y"),
-                    b.created_on
-                        .add(Duration::from_secs(2592000))// 30 days
-                        .format("%d.%m.%Y")
-                );
-                output
-            });
+            let res = rows
+                .iter()
+                .fold("Проект: Сити Дом № 1\n".to_string(), |mut output, b| {
+                    let facing = if b.object_type.eq("Квартира") {
+                        format!("Тип отделки: {}\n", b.facing)
+                    } else {
+                        "".to_string()
+                    };
+                    let _ = writeln!(
+                        output,
+                        "№ {}\n{}Рег-я: {}\nПередача: {}\n",
+                        // b.house,
+                        // b.object_type,
+                        b.object,
+                        facing,
+                        b.created_on.format("%d.%m.%Y"),
+                        b.created_on
+                            .add(Duration::from_secs(2592000)) // 30 days
+                            .format("%d.%m.%Y")
+                    );
+                    output
+                });
             if res.is_empty() {
                 "Нет данных".to_string()
             } else {
-                format!("{res}\nВсего записей: {}", rows.len())
+                format!("{res}Всего записей: {}", rows.len())
             }
         }
 
