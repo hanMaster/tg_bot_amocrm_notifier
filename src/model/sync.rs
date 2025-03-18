@@ -56,30 +56,33 @@ pub async fn sync() -> Result<(bool, String)> {
 
     let response = if !leads.is_empty() {
         let mut new_data: Vec<DealForAdd> = vec![];
+        let saved_ids = db.read_deals().await?;
         for lead in leads {
-            let saved = db.read_deal(lead).await.is_some();
-            if !saved {
-                let full_data = get_profit_data(lead).await?;
-                db.create_deal(&full_data).await?;
-                new_data.push(full_data);
+            if saved_ids.contains(&lead) {
+                continue;
             }
+            let full_data = get_profit_data(lead).await?;
+            db.create_deal(&full_data).await?;
+            new_data.push(full_data);
         }
-        let res = new_data.iter().fold(String::new(), |mut output, b| {
-            let _ = writeln!(
-                output,
-                "Проект: Сити\nДом № {}\nТип объекта: {} № {:0>3}\nРегистрация: {}\nПередача: {}\n",
-                b.house,
-                b.object_type,
-                b.object,
-                b.created_on.format("%d.%m.%Y"),
-                b.created_on.add(Duration::from_secs(8400)).format("%d.%m.%Y")
-            );
-            output
-        });
 
-        if res.is_empty() {
+        if new_data.is_empty() {
             (false, "Новых сделок не найдено".to_string())
         } else {
+            let res = new_data.iter().fold(String::new(), |mut output, b| {
+                let _ = writeln!(
+                    output,
+                    "Проект: Сити\nДом № {}\nТип объекта: {} № {:0>3}\nРегистрация: {}\nПередача: {}\n",
+                    b.house,
+                    b.object_type,
+                    b.object,
+                    b.created_on.format("%d.%m.%Y"),
+                    b.created_on
+                        .add(Duration::from_secs(2592000))
+                        .format("%d.%m.%Y")
+                );
+                output
+            });
             (true, res)
         }
     } else {
@@ -131,7 +134,6 @@ async fn get_profit_data(deal_id: u64) -> Result<DealForAdd> {
 
     if response.status() == reqwest::StatusCode::OK {
         debug!("JSON parse");
-
         let data = response.json::<ProfitRecord>().await?;
 
         debug!("received: {:?}", data);
@@ -205,7 +207,7 @@ mod tests {
     use super::*;
     #[test]
     fn parse_date() {
-        let str_date = "2025-03-12 04:38 +1000";
+        let str_date = "2025-03-12 04:38 +0000";
         let res = DateTime::parse_from_str(str_date, "%Y-%m-%d %H:%M %z");
         println!("{:?}", res);
         assert!(res.is_ok());

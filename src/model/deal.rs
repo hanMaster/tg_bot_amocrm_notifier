@@ -53,12 +53,12 @@ impl Db {
         Ok(())
     }
 
-    pub async fn read_deal(&self, deal_id: u64) -> Option<HouseData> {
-        sqlx::query_as("SELECT * FROM deal WHERE deal.deal_id=$1")
-            .bind(deal_id.to_string())
-            .fetch_one(&self.db)
-            .await
-            .ok()
+    pub async fn read_deals(&self) -> Result<Vec<u64>> {
+        let records: Vec<HouseData> = sqlx::query_as("SELECT * FROM deal")
+            .fetch_all(&self.db)
+            .await?;
+        let res = records.iter().map(|r| r.deal_id).collect();
+        Ok(res)
     }
 }
 

@@ -21,6 +21,7 @@ pub struct Embedded {
     pub leads: Vec<Lead>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Lead {
     pub id: u64,
