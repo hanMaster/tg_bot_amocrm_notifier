@@ -5,46 +5,21 @@ use crate::model::data::{CustomField, ProfitRecord, Record, Val};
 use crate::model::deal::DealForAdd;
 use crate::model::Db;
 use crate::Result;
-use log::{debug, error, info};
+use log::{debug, info};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
-use sqlx::FromRow;
+use sqlx::types::chrono::DateTime;
 use std::fmt::Write;
-
-#[allow(dead_code)]
-#[derive(Debug, FromRow)]
-pub struct LogData {
-    pub id: i32,
-    pub last_checked_date: i32,
-    pub row_count: i32,
-    pub created_on: String,
-    pub updated_on: String,
-}
-
-impl Db {
-    pub async fn get_last_sync_date(&self) -> Result<String> {
-        let log_record: Option<LogData> =
-            sqlx::query_as("SELECT * FROM log ORDER BY created_on DESC LIMIT 1")
-                .fetch_optional(&self.db)
-                .await?;
-        debug!("log_record: {:?}", log_record);
-        match log_record {
-            None => Ok("1600437670".to_owned()),
-            Some(r) => Ok(r.last_checked_date.to_string()),
-        }
-    }
-}
+use std::ops::Add;
+use std::time::Duration;
 
 pub async fn sync() -> Result<(bool, String)> {
     let db = Db::new().await;
-    let from_date = db.get_last_sync_date().await?;
-
-    debug!("From Date: {:?}", from_date);
 
     let client = Client::new()
         .get(format!(
-            "{}&filter[created_at][from]={from_date}",
+            "{}&filter[created_at][from]=1600437670",
             config().AMO_URL
         ))
         .header("Authorization", format!("Bearer {}", config().AMO_TOKEN));
@@ -52,7 +27,6 @@ pub async fn sync() -> Result<(bool, String)> {
     let result = client.send().await?;
 
     if result.status() == reqwest::StatusCode::NO_CONTENT {
-        db.update_log(0).await?;
         return Ok((false, "Новых сделок не найдено".to_string()));
     }
 
@@ -80,26 +54,34 @@ pub async fn sync() -> Result<(bool, String)> {
         leads.extend(leads_in_while);
     }
 
-    let full_data = get_profit_data(leads).await?;
-
-    let response = if !full_data.is_empty() {
-        db.update_log(full_data.len()).await?;
-        let leads_cloned = full_data.clone();
-        for lead in full_data {
-            let saved = db.read_deal(&lead.deal_id).await.is_some();
+    let response = if !leads.is_empty() {
+        let mut new_data: Vec<DealForAdd> = vec![];
+        for lead in leads {
+            let saved = db.read_deal(lead).await.is_some();
             if !saved {
-                db.create_deal(lead).await?;
+                let full_data = get_profit_data(lead).await?;
+                db.create_deal(&full_data).await?;
+                new_data.push(full_data);
             }
         }
-        let res = leads_cloned.iter().fold(String::new(), |mut output, b| {
+        let res = new_data.iter().fold(String::new(), |mut output, b| {
             let _ = writeln!(
                 output,
-                "Дом № {} - {} №{}",
-                b.house, b.object_type, b.object
+                "Проект: Сити\nДом № {}\nТип объекта: {} № {:0>3}\nРегистрация: {}\nПередача: {}\n",
+                b.house,
+                b.object_type,
+                b.object,
+                b.created_on.format("%d.%m.%Y"),
+                b.created_on.add(Duration::from_secs(8400)).format("%d.%m.%Y")
             );
             output
         });
-        (true, res)
+
+        if res.is_empty() {
+            (false, "Новых сделок не найдено".to_string())
+        } else {
+            (true, res)
+        }
     } else {
         (false, "Синхронизация выполнена".to_string())
     };
@@ -130,62 +112,66 @@ fn extract_deal_ids(record: Record) -> Vec<u64> {
     leads
 }
 
-async fn get_profit_data(ids: Vec<u64>) -> Result<Vec<DealForAdd>> {
+async fn get_profit_data(deal_id: u64) -> Result<DealForAdd> {
     let token = get_profit_token(&config().PROFIT_URL).await?;
 
-    let mut res: Vec<DealForAdd> = Vec::with_capacity(ids.len());
+    let url = format!(
+        "{}/property/deal/{}?access_token={}",
+        config().PROFIT_URL,
+        deal_id,
+        token
+    );
 
-    for id in ids {
-        let url = format!(
-            "{}/property/deal/{}?access_token={}",
-            config().PROFIT_URL,
-            id,
-            token
-        );
-        debug!("fetching {}", url);
-        let response = Client::new()
-            .get(url)
-            .header("Content-Type", "application/json")
-            .send()
-            .await?;
-        if response.status() == reqwest::StatusCode::OK {
-            debug!("JSON parse");
+    debug!("fetching {}", url);
+    let response = Client::new()
+        .get(url)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
 
-            let data = response.json::<ProfitRecord>().await;
-            // let date_utc = DateTime::from_timestamp(l.created_at, 0).unwrap();
-            // let created_on = DateTime::<Local>::from(date_utc).naive_local();
+    if response.status() == reqwest::StatusCode::OK {
+        debug!("JSON parse");
 
-            match data {
-                Ok(d) => {
-                    debug!("received: {:?}", d);
-                    if d.status == "success" {
-                        let p = d.data.first().unwrap();
-                        let object_type = if p.house_name.contains("Кладовк") {
-                            "кладовка".to_string()
-                        } else {
-                            "Квартира".to_string()
-                        };
+        let data = response.json::<ProfitRecord>().await?;
 
-                        let house = p.house_name.split('№').collect::<Vec<_>>()[1];
-                        let house = house.parse::<i32>()?;
+        debug!("received: {:?}", data);
+        if data.status == "success" {
+            let p = data.data.first().unwrap();
+            let object_type = if p.house_name.contains("Кладовк") {
+                "кладовка".to_string()
+            } else {
+                "Квартира".to_string()
+            };
 
-                        let rec = DealForAdd {
-                            deal_id: id.to_string(),
-                            house,
-                            object_type,
-                            object: p.number.parse::<i32>()?,
-                        };
-                        res.push(rec);
-                    }
-                }
-                Err(e) => {
-                    error!("PARSE ERROR: {:?}", e);
-                }
-            }
+            let house_parts = p.house_name.split('№').collect::<Vec<_>>();
+            let house = if house_parts.len() < 2 {
+                house_parts[0].to_string()
+            } else {
+                house_parts[1].to_string()
+            };
+            let house = house.parse::<i32>().unwrap_or(-1);
+
+            // soldAt
+            let created_on = DateTime::parse_from_str(
+                format!("{} +0000", p.sold_at).as_str(),
+                "%Y-%m-%d %H:%M %z",
+            )
+            .unwrap_or(Default::default())
+            .naive_local();
+
+            Ok(DealForAdd {
+                deal_id,
+                house,
+                object_type,
+                object: p.number.parse::<i32>()?,
+                created_on,
+            })
+        } else {
+            Err(Error::ProfitGetDataFailed)
         }
+    } else {
+        Err(Error::ProfitGetDataFailed)
     }
-
-    Ok(res)
 }
 
 #[derive(Deserialize)]
@@ -212,4 +198,16 @@ async fn get_profit_token(url: &str) -> Result<String> {
     }
 
     Err(Error::ProfitAuthFailed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn parse_date() {
+        let str_date = "2025-03-12 04:38 +1000";
+        let res = DateTime::parse_from_str(str_date, "%Y-%m-%d %H:%M %z");
+        println!("{:?}", res);
+        assert!(res.is_ok());
+    }
 }

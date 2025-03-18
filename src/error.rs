@@ -14,6 +14,7 @@ pub enum Error {
     Request(RequestError),
     RequestFailed(reqwest::Error),
     ProfitAuthFailed,
+    ProfitGetDataFailed,
     Parse(ParseIntError),
 }
 

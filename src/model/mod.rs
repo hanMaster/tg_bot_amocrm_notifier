@@ -25,21 +25,12 @@ async fn create_schema(db_url: &str) -> Result<()> {
     CREATE TABLE IF NOT EXISTS deal
     (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        deal_id         TEXT                NOT NULL,
+        deal_id         BIGINTEGER          NOT NULL,
         house           INTEGER             NOT NULL,
         object_type     TEXT                NOT NULL,
         object          INTEGER             NOT NULL,
         created_on      DATETIME DEFAULT    (datetime('now', 'localtime')),
         updated_on      DATETIME DEFAULT    (datetime('now', 'localtime'))
-    );
-
-    CREATE TABLE IF NOT EXISTS log
-    (
-        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-        last_checked_date   TIMESTAMP               NOT NULL,
-        row_count           INT                     NOT NULL,
-        created_on          DATETIME DEFAULT    (datetime('now', 'localtime')),
-        updated_on          DATETIME DEFAULT    (datetime('now', 'localtime'))
     );
     "#;
     let _ = sqlx::query(qry).execute(&pool).await?;
