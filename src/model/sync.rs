@@ -54,7 +54,7 @@ pub async fn sync() -> Result<(bool, String)> {
 
     let response = if !leads.is_empty() {
         let mut new_data: Vec<DealForAdd> = vec![];
-        let saved_ids = db.read_deals().await?;
+        let saved_ids = db.read_deal_ids().await?;
         let token = get_profit_token(&config().PROFIT_URL).await?;
         for lead in leads {
             if saved_ids.contains(&lead) {
@@ -134,9 +134,9 @@ async fn get_profit_data(deal_id: u64, token: &str) -> Result<DealForAdd> {
         if data.status == "success" {
             let p = data.data.first().unwrap();
             let object_type = if p.house_name.contains("Кладовк") {
-                "кладовка".to_string()
+                "Кладовки".to_string()
             } else {
-                "Квартира".to_string()
+                "Квартиры".to_string()
             };
 
             let house_parts = p.house_name.split('№').collect::<Vec<_>>();
@@ -158,6 +158,7 @@ async fn get_profit_data(deal_id: u64, token: &str) -> Result<DealForAdd> {
 
             Ok(DealForAdd {
                 deal_id,
+                project: p.project_name.clone(),
                 house,
                 object_type,
                 object: p.number.parse::<i32>()?,

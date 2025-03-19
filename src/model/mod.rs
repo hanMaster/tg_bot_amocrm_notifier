@@ -26,6 +26,7 @@ async fn create_schema(db_url: &str) -> Result<()> {
     (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         deal_id         BIGINTEGER          NOT NULL,
+        project         TEXT                NOT NULL,
         house           INTEGER             NOT NULL,
         object_type     TEXT                NOT NULL,
         object          INTEGER             NOT NULL,

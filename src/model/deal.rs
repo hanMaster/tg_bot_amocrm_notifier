@@ -12,6 +12,7 @@ use std::time::Duration;
 pub struct HouseData {
     pub id: i32,
     pub deal_id: u64,
+    pub project: String,
     pub house: i32,
     pub object_type: String,
     pub object: i32,
@@ -23,6 +24,7 @@ pub struct HouseData {
 #[derive(Debug, Clone)]
 pub struct DealForAdd {
     pub deal_id: u64,
+    pub project: String,
     pub house: i32,
     pub object_type: String,
     pub object: i32,
@@ -31,81 +33,110 @@ pub struct DealForAdd {
 }
 
 impl Db {
-    async fn list(&self, object_type: &str) -> Result<Vec<HouseData>> {
-        debug!("get apartments_list");
-        let rows = sqlx::query_as("SELECT * FROM deal WHERE object_type = $1 ORDER BY object ASC ")
-            .bind(object_type)
-            .fetch_all(&self.db)
-            .await?;
-        Ok(rows)
+    pub async fn list_numbers(&self, project: &str, object_type: &str) -> Result<Vec<i32>> {
+        let records: Vec<HouseData> = sqlx::query_as(
+            "SELECT * FROM deal WHERE project = $1 AND object_type = $2 ORDER BY object ASC ",
+        )
+        .bind(project)
+        .bind(object_type)
+        .fetch_all(&self.db)
+        .await?;
+        let res = records.iter().map(|r| r.object).collect();
+        Ok(res)
     }
 
     pub async fn create_deal(&self, d: &DealForAdd) -> Result<()> {
         debug!("create deal with data: {:?}", &d);
-        let (id, ): (i64,) =
-            sqlx::query_as("INSERT INTO deal (deal_id, house, object_type, object, facing, created_on) VALUES($1, $2, $3, $4, $5, $6) returning id")
-                .bind(d.deal_id as i32)
-                .bind(d.house)
-                .bind(&d.object_type)
-                .bind(d.object)
-                .bind(&d.facing)
-                .bind(d.created_on)
-                .fetch_one(&self.db)
-                .await?;
+        let (id,): (i64,) = sqlx::query_as(
+            r#"
+                INSERT INTO deal (deal_id, project, house, object_type, object, facing, created_on)
+                VALUES($1, $2, $3, $4, $5, $6,$7) returning id"#,
+        )
+        .bind(d.deal_id as i32)
+        .bind(&d.project)
+        .bind(d.house)
+        .bind(&d.object_type)
+        .bind(d.object)
+        .bind(&d.facing)
+        .bind(d.created_on)
+        .fetch_one(&self.db)
+        .await?;
         debug!("Created row with id: {}", id);
         Ok(())
     }
 
-    pub async fn read_deals(&self) -> Result<Vec<u64>> {
+    pub async fn read_deal_ids(&self) -> Result<Vec<u64>> {
         let records: Vec<HouseData> = sqlx::query_as("SELECT * FROM deal")
             .fetch_all(&self.db)
             .await?;
         let res = records.iter().map(|r| r.deal_id).collect();
         Ok(res)
     }
+
+    async fn get_deal(&self, project: &str, object_type: &str, number: i32) -> Result<HouseData> {
+        let rows = sqlx::query_as(
+            r#"
+            SELECT * FROM deal WHERE project = $1 AND object_type = $2 AND object = $3 "#,
+        )
+        .bind(project)
+        .bind(object_type)
+        .bind(number)
+        .fetch_one(&self.db)
+        .await?;
+        Ok(rows)
+    }
 }
 
-pub async fn apartments() -> String {
-    debug!("get apartments");
-    prepare_response("Квартира").await
-}
-pub async fn storage_rooms() -> String {
-    debug!("get storage_rooms");
-    prepare_response("кладовка").await
-}
-
-async fn prepare_response(object_type: &str) -> String {
+pub async fn prepare_numbers_response(project: &str, object_type: &str) -> String {
     let db = Db::new().await;
-    let result = db.list(object_type).await;
-
+    let result = db.list_numbers(project, object_type).await;
     match result {
-        Ok(rows) => {
-            let res = rows
-                .iter()
-                .fold("Проект: Сити Дом № 1\n".to_string(), |mut output, b| {
-                    let facing = if b.object_type.eq("Квартира") {
-                        format!("Тип отделки: {}\n", b.facing)
-                    } else {
-                        "".to_string()
-                    };
-                    let _ = writeln!(
-                        output,
-                        "№ {}\n{}Рег-я: {}\nПередача: {}\n",
-                        // b.house,
-                        // b.object_type,
-                        b.object,
-                        facing,
-                        b.created_on.format("%d.%m.%Y"),
-                        b.created_on
-                            .add(Duration::from_secs(2592000)) // 30 days
-                            .format("%d.%m.%Y")
-                    );
+        Ok(numbers) => {
+            if numbers.is_empty() {
+                "Объектов не найдено".to_string()
+            } else {
+                let res = numbers.iter().fold("Найдены объекты с номерами:\n".to_string(), |mut output, b| {
+                    let _ = write!(output, "{}, ", b);
                     output
                 });
+                res
+            }
+        }
+        Err(err) => {
+            error!("{:?}", err);
+            "Ошибка при получении объектов".to_string()
+        }
+    }
+}
+
+pub async fn prepare_response(project: &str, object_type: &str, number: i32) -> String {
+    let db = Db::new().await;
+    let result = db.get_deal(project, object_type, number).await;
+
+    match result {
+        Ok(b) => {
+            let facing = if b.object_type.eq("Квартиры") {
+                format!("Тип отделки: {}\n", b.facing)
+            } else {
+                "".to_string()
+            };
+            let res = format!(
+                "Проект: {}\nДом № {}\nТип объекта: {}\n№ {}\n{}Дата регистрации: {}\nПередать объект до: {}\n",
+                b.project,
+                b.house,
+                b.object_type,
+                b.object,
+                facing,
+                b.created_on.format("%d.%m.%Y"),
+                b.created_on
+                    .add(Duration::from_secs(2592000)) // 30 days
+                    .format("%d.%m.%Y")
+            );
+
             if res.is_empty() {
                 "Нет данных".to_string()
             } else {
-                format!("{res}Всего записей: {}", rows.len())
+                res
             }
         }
 
