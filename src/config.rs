@@ -22,11 +22,15 @@ pub struct Config {
     // -- DB
     pub DB_URL: String,
     // -- AmoCRM
-    pub AMO_URL: String,
-    pub AMO_TOKEN: String,
+    pub AMO_CITY_URL: String,
+    pub AMO_CITY_TOKEN: String,
+    pub AMO_FORMAT_URL: String,
+    pub AMO_FORMAT_TOKEN: String,
     // -- Profitbase
-    pub PROFIT_URL: String,
-    pub PROFIT_API_KEY: String,
+    pub PROF_CITY_URL: String,
+    pub PROF_CITY_API_KEY: String,
+    pub PROF_FORMAT_URL: String,
+    pub PROF_FORMAT_API_KEY: String,
     // -- Schedule for worker
     pub SCHEDULE: String,
 }
@@ -37,10 +41,14 @@ impl Config {
             ADMIN_ID: get_env_as_parse("TG_HANMASTER_ID")?,
             TG_GROUP_ID: get_env_as_parse("TG_GROUP_ID")?,
             DB_URL: get_env("DB_URL")?,
-            AMO_URL: get_env("AMO_URL")?,
-            AMO_TOKEN: get_env("AMO_TOKEN")?,
-            PROFIT_URL: get_env("PROFIT_URL")?,
-            PROFIT_API_KEY: get_env("PROFIT_API_KEY")?,
+            AMO_CITY_URL: get_env("AMO_CITY_URL")?,
+            AMO_CITY_TOKEN: get_env("AMO_CITY_TOKEN")?,
+            AMO_FORMAT_URL: get_env("AMO_FORMAT_URL")?,
+            AMO_FORMAT_TOKEN: get_env("AMO_FORMAT_TOKEN")?,
+            PROF_CITY_URL: get_env("PROF_CITY_URL")?,
+            PROF_CITY_API_KEY: get_env("PROF_CITY_API_KEY")?,
+            PROF_FORMAT_URL: get_env("PROF_FORMAT_URL")?,
+            PROF_FORMAT_API_KEY: get_env("PROF_FORMAT_API_KEY")?,
             SCHEDULE: get_env("SCHEDULE")?,
         })
     }

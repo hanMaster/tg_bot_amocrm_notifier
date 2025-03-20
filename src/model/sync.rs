@@ -18,9 +18,9 @@ pub async fn sync() -> Result<(bool, String)> {
     let client = Client::new()
         .get(format!(
             "{}&filter[created_at][from]=1600437670",
-            config().AMO_URL
+            config().AMO_CITY_URL
         ))
-        .header("Authorization", format!("Bearer {}", config().AMO_TOKEN));
+        .header("Authorization", format!("Bearer {}", config().AMO_CITY_TOKEN));
 
     let result = client.send().await?;
 
@@ -39,10 +39,10 @@ pub async fn sync() -> Result<(bool, String)> {
         let client = Client::new()
             .get(format!(
                 "{}&filter[created_at][from]={}",
-                config().AMO_URL,
+                config().AMO_CITY_URL,
                 next.as_ref().unwrap().href
             ))
-            .header("Authorization", format!("Bearer {}", config().AMO_TOKEN));
+            .header("Authorization", format!("Bearer {}", config().AMO_CITY_TOKEN));
         let mut data = client.send().await?.json::<Record>().await?;
 
         next = data._links.next.take();
@@ -55,12 +55,12 @@ pub async fn sync() -> Result<(bool, String)> {
     let response = if !leads.is_empty() {
         let mut new_data: Vec<DealForAdd> = vec![];
         let saved_ids = db.read_deal_ids().await?;
-        let token = get_profit_token(&config().PROFIT_URL).await?;
+        let token = get_profit_token(&config().PROF_CITY_URL, &config().PROF_CITY_API_KEY).await?;
         for lead in leads {
             if saved_ids.contains(&lead) {
                 continue;
             }
-            let full_data = get_profit_data(lead, &token).await?;
+            let full_data = get_profit_data(lead, &config().PROF_CITY_URL, &token).await?;
             db.create_deal(&full_data).await?;
             new_data.push(full_data);
         }
@@ -111,13 +111,8 @@ fn extract_deal_ids(record: Record) -> Vec<u64> {
     leads
 }
 
-async fn get_profit_data(deal_id: u64, token: &str) -> Result<DealForAdd> {
-    let url = format!(
-        "{}/property/deal/{}?access_token={}",
-        config().PROFIT_URL,
-        deal_id,
-        token
-    );
+async fn get_profit_data(deal_id: u64, url: &str, token: &str) -> Result<DealForAdd> {
+    let url = format!("{}/property/deal/{}?access_token={}", url, deal_id, token);
 
     debug!("fetching {}", url);
     let response = Client::new()
@@ -177,11 +172,11 @@ async fn get_profit_data(deal_id: u64, token: &str) -> Result<DealForAdd> {
 struct AuthResponse {
     pub access_token: String,
 }
-async fn get_profit_token(url: &str) -> Result<String> {
+async fn get_profit_token(url: &str, api_key: &str) -> Result<String> {
     let payload = json!({
       "type": "api-app",
       "credentials": {
-        "pb_api_key": config().PROFIT_API_KEY,
+        "pb_api_key": api_key,
       }
     });
     let client = Client::new()
