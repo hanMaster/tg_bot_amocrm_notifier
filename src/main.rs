@@ -1,8 +1,9 @@
 use crate::config::config;
 pub use crate::error::Result;
-use crate::model::deal::{prepare_numbers_response, prepare_response};
+use crate::model::deal::{get_house_numbers, prepare_numbers_response, prepare_response};
 use crate::model::sync::sync;
 use dotenvy::dotenv;
+use log::info;
 use std::error::Error;
 use teloxide::dispatching::dialogue;
 use teloxide::dispatching::dialogue::InMemStorage;
@@ -26,9 +27,14 @@ pub enum State {
     ChooseObjectType {
         project: String,
     },
+    ChooseHouseNumber {
+        project: String,
+        object_type: String,
+    },
     ChooseObjectNumber {
         project: String,
         object_type: String,
+        house: i32,
     },
 }
 
@@ -63,11 +69,19 @@ async fn main() -> Result<()> {
                 .branch(case![State::ChooseProject].endpoint(receive_project_name))
                 .branch(case![State::ChooseObjectType { project }].endpoint(receive_object_type))
                 .branch(
-                    case![State::ChooseObjectNumber {
+                    case![State::ChooseHouseNumber {
                         project,
                         object_type
                     }]
-                    .endpoint(receive_number),
+                    .endpoint(receive_house_number),
+                )
+                .branch(
+                    case![State::ChooseObjectNumber {
+                        project,
+                        object_type,
+                        house,
+                    }]
+                    .endpoint(receive_object_number),
                 ),
         );
 
@@ -99,6 +113,24 @@ fn make_kbd(step: i32) -> KeyboardMarkup {
         let row = label
             .iter()
             .map(|&item| KeyboardButton::new(item.to_owned()))
+            .collect();
+
+        keyboard.push(row);
+    }
+
+    KeyboardMarkup::new(keyboard).resize_keyboard()
+}
+async fn make_house_kbd(project: &str, object_type: &str) -> KeyboardMarkup {
+    let mut keyboard: Vec<Vec<KeyboardButton>> = vec![];
+
+    let labels = get_house_numbers(project, object_type).await;
+
+    info!("LABELS {:?}", labels);
+
+    for label in labels.chunks(2) {
+        let row = label
+            .iter()
+            .map(|&item| KeyboardButton::new(item.to_string()))
             .collect();
 
         keyboard.push(row);
@@ -171,14 +203,12 @@ async fn receive_object_type(
     match msg.text() {
         Some(object_type) => {
             if OBJECT_TYPES.contains(&object_type) {
-                let numbers = prepare_numbers_response(&project, object_type).await;
-                bot.send_message(msg.chat.id, numbers)
-                    .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
-                    .await?;
-                bot.send_message(msg.chat.id, "Укажите номер помещения")
+                let keyboard = make_house_kbd(&project, object_type).await;
+                bot.send_message(msg.chat.id, "Выберите номер дома")
+                    .reply_markup(keyboard)
                     .await?;
                 dialogue
-                    .update(State::ChooseObjectNumber {
+                    .update(State::ChooseHouseNumber {
                         project,
                         object_type: object_type.into(),
                     })
@@ -197,17 +227,55 @@ async fn receive_object_type(
     Ok(())
 }
 
-async fn receive_number(
+async fn receive_house_number(
     bot: Bot,
     dialogue: MyDialogue,
     (project, object_type): (String, String), // Available from `State::ChooseObject`.
+    msg: Message,
+) -> HandlerResult {
+    match msg.text().map(|text| text.parse::<i32>()) {
+        Some(Ok(house)) => {
+            let houses = get_house_numbers(&project, &object_type).await;
+            if houses.contains(&house) {
+                let numbers = prepare_numbers_response(&project, &object_type, house).await;
+                bot.send_message(msg.chat.id, numbers)
+                    .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
+                    .await?;
+
+                bot.send_message(msg.chat.id, "Укажите номер помещения")
+                    .await?;
+                dialogue
+                    .update(State::ChooseObjectNumber {
+                        project,
+                        object_type,
+                        house,
+                    })
+                    .await?;
+            } else {
+                bot.send_message(msg.chat.id, "Сделайте выбор кнопками")
+                    .await?;
+            }
+        }
+        _ => {
+            bot.send_message(msg.chat.id, "Сделайте выбор кнопками")
+                .await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn receive_object_number(
+    bot: Bot,
+    dialogue: MyDialogue,
+    (project, object_type, house): (String, String, i32), // Available from `State::ChooseHouseNumber`.
     msg: Message,
 ) -> HandlerResult {
     if let Some(text) = msg.text() {
         let payload = text.trim_start_matches('/');
         match payload.parse::<i32>() {
             Ok(number) => {
-                let report = prepare_response(&project, &object_type, number).await;
+                let report = prepare_response(&project, &object_type, house, number).await;
                 bot.send_message(msg.chat.id, report).await?;
                 dialogue.exit().await?;
             }
