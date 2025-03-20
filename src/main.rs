@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
     dotenv().expect("dotenv init failed");
 
     pretty_env_logger::init();
-    log::info!("Starting command bot...");
+    info!("Starting DKP bot...");
 
     let bot = Bot::from_env();
     bot.set_my_commands(Command::bot_commands())
@@ -171,6 +171,13 @@ async fn receive_project_name(bot: Bot, dialogue: MyDialogue, msg: Message) -> H
     match msg.text() {
         Some(text) => {
             if PROJECTS.contains(&text) {
+                if text.eq("ЖК Формат") {
+                    bot.send_message(msg.chat.id, "Нет данных")
+                        .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
+                        .await?;
+                    dialogue.exit().await?;
+                } else {
+
                 let keyboard = make_kbd(2);
                 bot.send_message(msg.chat.id, "Квартиры или кладовки?")
                     .reply_markup(keyboard)
@@ -180,6 +187,7 @@ async fn receive_project_name(bot: Bot, dialogue: MyDialogue, msg: Message) -> H
                         project: text.into(),
                     })
                     .await?;
+                }
             } else {
                 bot.send_message(msg.chat.id, "Сделайте выбор кнопками")
                     .await?;
