@@ -302,6 +302,11 @@ async fn receive_object_number(
 ) -> HandlerResult {
     if let Some(text) = msg.text() {
         let payload = text.trim_start_matches('/');
+        let payload = if payload.contains('@') {
+            payload.split('@').collect::<Vec<&str>>()[0]
+        } else {
+            payload
+        };
         match payload.parse::<i32>() {
             Ok(number) => {
                 let objects = get_object_numbers(&project, &object_type, house).await;
