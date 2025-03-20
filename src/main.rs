@@ -74,7 +74,6 @@ async fn main() -> Result<()> {
         )
         .branch(
             Update::filter_message()
-                .branch(case![State::Start].endpoint(start))
                 .branch(case![State::ChooseProject].endpoint(receive_project_name))
                 .branch(case![State::ChooseObjectType { project }].endpoint(receive_object_type))
                 .branch(
