@@ -204,26 +204,18 @@ async fn receive_number(
     msg: Message,
 ) -> HandlerResult {
     if let Some(text) = msg.text() {
-        if text.starts_with('/') {
-            let payload = text.trim_start_matches('/');
-            match payload.parse::<i32>() {
-                Ok(number) => {
-                    let report = prepare_response(&project, &object_type, number).await;
-                    bot.send_message(msg.chat.id, report).await?;
-                    dialogue.exit().await?;
-                }
-                _ => {
-                    bot.send_message(msg.chat.id, "Шаблон: /номер помещения")
-                        .await?;
-                }
+        let payload = text.trim_start_matches('/');
+        match payload.parse::<i32>() {
+            Ok(number) => {
+                let report = prepare_response(&project, &object_type, number).await;
+                bot.send_message(msg.chat.id, report).await?;
+                dialogue.exit().await?;
             }
-        } else {
-            bot.send_message(msg.chat.id, "Шаблон: /номер помещения")
-                .await?;
+            _ => {
+                bot.send_message(msg.chat.id, "Шаблон: /номер помещения")
+                    .await?;
+            }
         }
-    } else {
-        bot.send_message(msg.chat.id, "Шаблон: /номер помещения")
-            .await?;
     }
 
     Ok(())
