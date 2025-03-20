@@ -24,6 +24,10 @@ pub struct HouseData {
 pub struct HouseNumbers {
     pub house: i32,
 }
+#[derive(FromRow, Debug)]
+pub struct ObjectNumbers {
+    pub object: i32,
+}
 
 #[derive(Debug, Clone)]
 pub struct DealForAdd {
@@ -56,8 +60,8 @@ impl Db {
         object_type: &str,
         house: i32,
     ) -> Result<Vec<i32>> {
-        let records: Vec<HouseData> = sqlx::query_as(
-            "SELECT * FROM deal WHERE project = $1 AND object_type = $2 AND house = $3 ORDER BY object ",
+        let records: Vec<ObjectNumbers> = sqlx::query_as(
+            "SELECT object FROM deal WHERE project = $1 AND object_type = $2 AND house = $3 ORDER BY object ",
         )
         .bind(project)
         .bind(object_type)
@@ -147,6 +151,15 @@ pub async fn get_house_numbers(project: &str, object_type: &str) -> Vec<i32> {
     let res = db.list_house_numbers(project, object_type).await;
     res.unwrap_or_else(|e| {
         error!("[get_house_numbers] {:?}", e);
+        vec![]
+    })
+}
+
+pub async fn get_object_numbers(project: &str, object_type: &str, house: i32) -> Vec<i32> {
+    let db = Db::new().await;
+    let res = db.list_numbers(project, object_type, house).await;
+    res.unwrap_or_else(|e| {
+        error!("[get_object_numbers] {:?}", e);
         vec![]
     })
 }

@@ -1,6 +1,8 @@
 use crate::config::config;
 pub use crate::error::Result;
-use crate::model::deal::{get_house_numbers, prepare_numbers_response, prepare_response};
+use crate::model::deal::{
+    get_house_numbers, get_object_numbers, prepare_numbers_response, prepare_response,
+};
 use crate::model::sync::sync;
 use dotenvy::dotenv;
 use log::info;
@@ -36,10 +38,16 @@ pub enum State {
         object_type: String,
         house: i32,
     },
+    ChooseAnswer {
+        project: String,
+        object_type: String,
+        house: i32,
+    },
 }
 
 const PROJECTS: [&str; 2] = ["DNS Сити", "ЖК Формат"];
 const OBJECT_TYPES: [&str; 2] = ["Квартиры", "Кладовки"];
+const YES_NO: [&str; 2] = ["Да", "Нет"];
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -61,7 +69,8 @@ async fn main() -> Result<()> {
         .branch(
             Update::filter_message()
                 .filter_command::<Command>()
-                .branch(case![Command::Sync].endpoint(sync_handler)),
+                .branch(case![Command::Sync].endpoint(sync_handler))
+                .branch(case![Command::Start].endpoint(start)),
         )
         .branch(
             Update::filter_message()
@@ -82,6 +91,14 @@ async fn main() -> Result<()> {
                         house,
                     }]
                     .endpoint(receive_object_number),
+                )
+                .branch(
+                    case![State::ChooseAnswer {
+                        project,
+                        object_type,
+                        house,
+                    }]
+                    .endpoint(receive_answer),
                 ),
         );
 
@@ -107,7 +124,13 @@ enum Command {
 fn make_kbd(step: i32) -> KeyboardMarkup {
     let mut keyboard: Vec<Vec<KeyboardButton>> = vec![];
 
-    let labels = if step == 1 { PROJECTS } else { OBJECT_TYPES };
+    let labels = if step == 1 {
+        PROJECTS
+    } else if step == 2 {
+        OBJECT_TYPES
+    } else {
+        YES_NO
+    };
 
     for label in labels.chunks(2) {
         let row = label
@@ -177,16 +200,15 @@ async fn receive_project_name(bot: Bot, dialogue: MyDialogue, msg: Message) -> H
                         .await?;
                     dialogue.exit().await?;
                 } else {
-
-                let keyboard = make_kbd(2);
-                bot.send_message(msg.chat.id, "Квартиры или кладовки?")
-                    .reply_markup(keyboard)
-                    .await?;
-                dialogue
-                    .update(State::ChooseObjectType {
-                        project: text.into(),
-                    })
-                    .await?;
+                    let keyboard = make_kbd(2);
+                    bot.send_message(msg.chat.id, "Квартиры или кладовки?")
+                        .reply_markup(keyboard)
+                        .await?;
+                    dialogue
+                        .update(State::ChooseObjectType {
+                            project: text.into(),
+                        })
+                        .await?;
                 }
             } else {
                 bot.send_message(msg.chat.id, "Сделайте выбор кнопками")
@@ -250,7 +272,7 @@ async fn receive_house_number(
                     .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
                     .await?;
 
-                bot.send_message(msg.chat.id, "Укажите номер помещения")
+                bot.send_message(msg.chat.id, "Выберите номер помещения")
                     .await?;
                 dialogue
                     .update(State::ChooseObjectNumber {
@@ -283,14 +305,80 @@ async fn receive_object_number(
         let payload = text.trim_start_matches('/');
         match payload.parse::<i32>() {
             Ok(number) => {
-                let report = prepare_response(&project, &object_type, house, number).await;
-                bot.send_message(msg.chat.id, report).await?;
-                dialogue.exit().await?;
+                let objects = get_object_numbers(&project, &object_type, house).await;
+                if objects.contains(&number) {
+                    let report = prepare_response(&project, &object_type, house, number).await;
+                    bot.send_message(msg.chat.id, report).await?;
+                    if objects.len() > 1 {
+                        let keyboard = make_kbd(3);
+                        bot.send_message(
+                            msg.chat.id,
+                            format!("Хотите посмотреть другой обект типа {object_type} в выбранном доме?"),
+                        )
+                        .reply_markup(keyboard)
+                        .await?;
+                        dialogue
+                            .update(State::ChooseAnswer {
+                                project,
+                                object_type,
+                                house,
+                            })
+                            .await?;
+                    } else {
+                        bot.send_message(msg.chat.id, "Чтобы начать сначала,\n нажмите /start")
+                            .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
+                            .await?;
+                        dialogue.exit().await?;
+                    }
+                }
             }
             _ => {
                 bot.send_message(msg.chat.id, "Шаблон: /номер помещения")
                     .await?;
             }
+        }
+    }
+
+    Ok(())
+}
+
+async fn receive_answer(
+    bot: Bot,
+    dialogue: MyDialogue,
+    (project, object_type, house): (String, String, i32),
+    msg: Message,
+) -> HandlerResult {
+    match msg.text() {
+        Some(answer) => {
+            if YES_NO.contains(&answer) {
+                if answer.eq("Да") {
+                    let numbers = prepare_numbers_response(&project, &object_type, house).await;
+                    bot.send_message(msg.chat.id, numbers)
+                        .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
+                        .await?;
+                    bot.send_message(msg.chat.id, "Выберите номер помещения")
+                        .await?;
+                    dialogue
+                        .update(State::ChooseObjectNumber {
+                            project,
+                            object_type,
+                            house,
+                        })
+                        .await?;
+                } else {
+                    bot.send_message(msg.chat.id, "Чтобы начать сначала,\n нажмите /start")
+                        .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
+                        .await?;
+                    dialogue.exit().await?;
+                }
+            } else {
+                bot.send_message(msg.chat.id, "Сделайте выбор кнопками")
+                    .await?;
+            }
+        }
+        _ => {
+            bot.send_message(msg.chat.id, "Сделайте выбор кнопками")
+                .await?;
         }
     }
 
