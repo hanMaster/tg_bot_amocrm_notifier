@@ -128,7 +128,7 @@ pub async fn prepare_numbers_response(project: &str, object_type: &str, house: i
                 let res = numbers.iter().fold(
                     "Найдены объекты с номерами:\n".to_string(),
                     |mut output, b| {
-                        let _ = write!(output, "{}, ", b);
+                        let _ = write!(output, "/{}, ", b);
                         output
                     },
                 );
