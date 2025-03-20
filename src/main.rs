@@ -123,11 +123,15 @@ async fn sync_handler(bot: Bot, msg: Message) -> HandlerResult {
 }
 
 async fn start(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
-    let keyboard = make_kbd(1);
-    bot.send_message(msg.chat.id, "Выберите проект")
-        .reply_markup(keyboard)
-        .await?;
-    dialogue.update(State::ChooseProject).await?;
+    if let Some(text) = msg.text() {
+        if text.starts_with("/start") {
+            let keyboard = make_kbd(1);
+            bot.send_message(msg.chat.id, "Выберите проект")
+                .reply_markup(keyboard)
+                .await?;
+            dialogue.update(State::ChooseProject).await?;
+        }
+    }
     Ok(())
 }
 
@@ -199,15 +203,27 @@ async fn receive_number(
     (project, object_type): (String, String), // Available from `State::ChooseObject`.
     msg: Message,
 ) -> HandlerResult {
-    match msg.text().map(|text| text.parse::<i32>()) {
-        Some(Ok(number)) => {
-            let report = prepare_response(&project, &object_type, number).await;
-            bot.send_message(msg.chat.id, report).await?;
-            dialogue.exit().await?;
+    if let Some(text) = msg.text() {
+        if text.starts_with('/') {
+            let payload = text.trim_start_matches('/');
+            match payload.parse::<i32>() {
+                Ok(number) => {
+                    let report = prepare_response(&project, &object_type, number).await;
+                    bot.send_message(msg.chat.id, report).await?;
+                    dialogue.exit().await?;
+                }
+                _ => {
+                    bot.send_message(msg.chat.id, "Шаблон: /номер помещения")
+                        .await?;
+                }
+            }
+        } else {
+            bot.send_message(msg.chat.id, "Шаблон: /номер помещения")
+                .await?;
         }
-        _ => {
-            bot.send_message(msg.chat.id, "Пришлите число.").await?;
-        }
+    } else {
+        bot.send_message(msg.chat.id, "Шаблон: /номер помещения")
+            .await?;
     }
 
     Ok(())
