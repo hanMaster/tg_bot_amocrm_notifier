@@ -127,7 +127,7 @@ async fn make_house_kbd(project: &str, object_type: &str) -> KeyboardMarkup {
 
     info!("LABELS {:?}", labels);
 
-    for label in labels.chunks(2) {
+    for label in labels.chunks(8) {
         let row = label
             .iter()
             .map(|&item| KeyboardButton::new(item.to_string()))
