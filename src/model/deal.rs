@@ -3,7 +3,6 @@ use crate::Result;
 use log::{debug, error};
 use sqlx::types::chrono::NaiveDateTime;
 use sqlx::FromRow;
-use std::fmt::Write;
 use std::ops::Add;
 use std::time::Duration;
 
@@ -118,31 +117,6 @@ impl Db {
         .fetch_one(&self.db)
         .await?;
         Ok(rows)
-    }
-}
-
-pub async fn prepare_numbers_response(project: &str, object_type: &str, house: i32) -> String {
-    let db = Db::new().await;
-    let result = db.list_numbers(project, object_type, house).await;
-    match result {
-        Ok(numbers) => {
-            if numbers.is_empty() {
-                "Объектов не найдено".to_string()
-            } else {
-                let res = numbers.iter().fold(
-                    "Найдены объекты с номерами:\n".to_string(),
-                    |mut output, b| {
-                        let _ = write!(output, "/{}, ", b);
-                        output
-                    },
-                );
-                res
-            }
-        }
-        Err(err) => {
-            error!("{:?}", err);
-            "Ошибка при получении объектов".to_string()
-        }
     }
 }
 
