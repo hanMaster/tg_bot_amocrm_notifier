@@ -1,8 +1,6 @@
 use crate::config::config;
 pub use crate::error::Result;
-use crate::model::deal::{
-    get_house_numbers, get_object_numbers, prepare_numbers_response, prepare_response,
-};
+use crate::model::deal::{get_house_numbers, get_object_numbers, prepare_response};
 use crate::model::sync::sync;
 use dotenvy::dotenv;
 use log::info;
@@ -251,20 +249,43 @@ async fn receive_house_number(
         Some(Ok(house)) => {
             let houses = get_house_numbers(&project, &object_type).await;
             if houses.contains(&house) {
-                let numbers = prepare_numbers_response(&project, &object_type, house).await;
-                bot.send_message(msg.chat.id, numbers)
-                    .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
-                    .await?;
-
-                bot.send_message(msg.chat.id, "Выберите номер помещения")
-                    .await?;
-                dialogue
-                    .update(State::ChooseObjectNumber {
-                        project,
-                        object_type,
-                        house,
-                    })
-                    .await?;
+                let numbers = get_object_numbers(&project, &object_type, house).await;
+                if numbers.is_empty() {
+                    bot.send_message(msg.chat.id, "Объектов не найдено".to_string())
+                        .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
+                        .await?;
+                } else {
+                    use std::fmt::Write;
+                    let message = numbers.iter().fold(
+                        "Найдены объекты с номерами:\n".to_string(),
+                        |mut output, b| {
+                            let _ = write!(output, "/{}, ", b);
+                            output
+                        },
+                    );
+                    bot.send_message(msg.chat.id, message)
+                        .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
+                        .await?;
+                    if numbers.len() > 1 {
+                        bot.send_message(msg.chat.id, "Выберите номер помещения")
+                            .await?;
+                        dialogue
+                            .update(State::ChooseObjectNumber {
+                                project,
+                                object_type,
+                                house,
+                            })
+                            .await?;
+                    } else {
+                        let number = *numbers.first().unwrap();
+                        let report = prepare_response(&project, &object_type, house, number).await;
+                        bot.send_message(msg.chat.id, report).await?;
+                        bot.send_message(msg.chat.id, "Чтобы начать сначала,\n нажмите /start")
+                            .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::new()))
+                            .await?;
+                        dialogue.exit().await?;
+                    }
+                };
             } else {
                 bot.send_message(msg.chat.id, "Сделайте выбор кнопками")
                     .await?;
